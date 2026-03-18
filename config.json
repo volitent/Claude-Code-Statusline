@@ -1,0 +1,35 @@
+{
+  "lines": [
+    {
+      "components": ["model", "directory", "git"],
+      "separator": " | "
+    },
+    {
+      "components": ["progress_bar", "tokens", "cost"],
+      "separator": " "
+    }
+  ],
+  "progress_bar": {
+    "width": 10,
+    "filled_char": "█",
+    "empty_char": "░",
+    "gradient_char": "▓"
+  },
+  "colors": {
+    "enabled": true,
+    "low": {"threshold": 50, "color": "green"},
+    "medium": {"threshold": 75, "color": "yellow"},
+    "high": {"threshold": 90, "color": "red"}
+  },
+  "tokens": {
+    "format": "in:{input} out:{output} total:{total}",
+    "unit": "k"
+  },
+  "components": {
+    "model": {"format": "{name}"},
+    "directory": {"max_length": 20, "show_git_root": true},
+    "git": {"show_branch": true, "show_changes": true},
+    "cost": {"format": "${cost}"},
+    "duration": {"format": "{duration}"}
+  }
+}

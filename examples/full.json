@@ -1,0 +1,35 @@
+{
+  "lines": [
+    {
+      "components": ["model", "directory", "git"],
+      "separator": " | "
+    },
+    {
+      "components": ["progress_bar", "tokens", "cost", "duration"],
+      "separator": " | "
+    }
+  ],
+  "progress_bar": {
+    "width": 12,
+    "filled_char": "█",
+    "empty_char": "░",
+    "gradient_char": "▓"
+  },
+  "colors": {
+    "enabled": true,
+    "low": {"threshold": 50, "color": "green"},
+    "medium": {"threshold": 75, "color": "yellow"},
+    "high": {"threshold": 90, "color": "red"}
+  },
+  "tokens": {
+    "format": "↑{input} ↓{output} Σ{total}",
+    "unit": "auto"
+  },
+  "components": {
+    "model": {"format": "🤖 {name}"},
+    "directory": {"max_length": 30, "show_git_root": true},
+    "git": {"show_branch": true, "show_changes": true},
+    "cost": {"format": "💰 ${cost}"},
+    "duration": {"format": "⏱ {duration}"}
+  }
+}
