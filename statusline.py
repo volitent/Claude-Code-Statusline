@@ -128,12 +128,16 @@ def format_tokens(value: int, unit: str) -> str:
 
 
 def render_progress_bar(percentage: float, config: dict) -> str:
-    """Render the pixel-style progress bar."""
+    """Render the pixel-style progress bar with percentage."""
     pb_config = config.get("progress_bar", {})
     width = pb_config.get("width", 10)
     filled_char = pb_config.get("filled_char", "█")
     empty_char = pb_config.get("empty_char", "░")
     gradient_char = pb_config.get("gradient_char", "▓")
+    show_percentage = pb_config.get("show_percentage", True)
+
+    # Handle null/None values
+    percentage = percentage or 0
 
     filled = int(percentage / 100 * width)
     remaining = width - filled
@@ -149,7 +153,12 @@ def render_progress_bar(percentage: float, config: dict) -> str:
     color = get_color_for_percentage(percentage, config)
     reset = COLORS["reset"] if color else ""
 
-    return f"{color}{bar}{reset}"
+    # Add percentage number after the bar
+    if show_percentage:
+        pct_display = int(percentage)
+        return f"{color}{bar}{reset} {color}{pct_display}%{reset}"
+    else:
+        return f"{color}{bar}{reset}"
 
 
 def render_model(data: dict, config: dict) -> str:
@@ -261,8 +270,9 @@ def render_tokens(data: dict, config: dict) -> str:
     unit = tokens_config.get("unit", "k")
 
     context = data.get("context_window", {})
-    input_tokens = context.get("input_tokens", 0)
-    output_tokens = context.get("output_tokens", 0)
+    # Use correct field names from Claude Code JSON
+    input_tokens = context.get("total_input_tokens", 0) or 0
+    output_tokens = context.get("total_output_tokens", 0) or 0
     total = input_tokens + output_tokens
 
     return fmt.format(
@@ -277,7 +287,8 @@ def render_cost(data: dict, config: dict) -> str:
     cost_config = config.get("components", {}).get("cost", {})
     fmt = cost_config.get("format", "${cost}")
 
-    cost = data.get("cost", {}).get("total", 0)
+    # Use correct field name from Claude Code JSON
+    cost = data.get("cost", {}).get("total_cost_usd", 0) or 0
     return fmt.format(cost=f"{cost:.4f}")
 
 
@@ -286,7 +297,9 @@ def render_duration(data: dict, config: dict) -> str:
     duration_config = config.get("components", {}).get("duration", {})
     fmt = duration_config.get("format", "{duration}")
 
-    duration_seconds = data.get("duration_seconds", 0)
+    # Use correct field name: total_duration_ms (milliseconds)
+    duration_ms = data.get("cost", {}).get("total_duration_ms", 0) or 0
+    duration_seconds = duration_ms // 1000
 
     if duration_seconds < 60:
         duration = f"{int(duration_seconds)}s"
@@ -302,11 +315,30 @@ def render_duration(data: dict, config: dict) -> str:
     return fmt.format(duration=duration)
 
 
+def get_context_percentage(data: dict) -> float:
+    """Get context usage percentage, with fallback calculation if needed."""
+    context = data.get("context_window", {})
+
+    # Try to use precomputed percentage first
+    percentage = context.get("used_percentage")
+    if percentage is not None:
+        return percentage
+
+    # Fallback: calculate from total_input_tokens and context_window_size
+    total_input = context.get("total_input_tokens", 0) or 0
+    window_size = context.get("context_window_size", 200000) or 200000
+
+    if total_input > 0 and window_size > 0:
+        return (total_input / window_size) * 100
+
+    return 0
+
+
 def render_component(name: str, data: dict, config: dict) -> str:
     """Dispatch to the appropriate component renderer."""
     renderers = {
         "progress_bar": lambda: render_progress_bar(
-            data.get("context_window", {}).get("used_percentage", 0),
+            get_context_percentage(data),
             config
         ),
         "model": lambda: render_model(data, config),

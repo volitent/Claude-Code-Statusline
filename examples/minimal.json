@@ -9,7 +9,8 @@
     "width": 8,
     "filled_char": "█",
     "empty_char": "░",
-    "gradient_char": "▓"
+    "gradient_char": "▓",
+    "show_percentage": true
   },
   "colors": {
     "enabled": true,

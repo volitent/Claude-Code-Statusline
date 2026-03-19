@@ -14,13 +14,35 @@
 
 ## 安装
 
-### 快速安装
+### 交互式安装（推荐）
 
 ```bash
 git clone https://github.com/yourusername/claude-code-statusline.git
 cd claude-code-statusline
-chmod +x install.sh
 ./install.sh
+```
+
+安装程序会提示你配置以下选项：
+- **布局模式**：单行或双行显示
+- **Git 信息**：显示分支名和修改状态
+- **Token 统计**：显示输入/输出/总 token 数
+- **会话费用**：显示当前会话花费
+- **会话时长**：显示会话持续时间
+
+### 快速安装
+
+使用默认配置（单行模式，包含 Git、Token、费用）：
+
+```bash
+./install.sh --quick
+```
+
+### 重新配置
+
+修改配置而无需重新安装：
+
+```bash
+./install.sh --reconfigure
 ```
 
 ### 手动安装
@@ -32,6 +54,7 @@ chmod +x install.sh
 ```json
 {
   "statusLine": {
+    "type": "command",
     "command": "python3 ~/.claude/statusline.py"
   }
 }
@@ -44,6 +67,15 @@ chmod +x install.sh
 ```bash
 ./install.sh --uninstall
 ```
+
+## 可用命令
+
+| 命令 | 说明 |
+|------|------|
+| `./install.sh` | 交互式安装 |
+| `./install.sh --quick` | 快速安装（默认配置） |
+| `./install.sh --reconfigure` | 重新配置选项 |
+| `./install.sh --uninstall` | 卸载状态栏 |
 
 ## 配置说明
 

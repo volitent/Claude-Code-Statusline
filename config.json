@@ -6,14 +6,15 @@
     },
     {
       "components": ["progress_bar", "tokens", "cost"],
-      "separator": " "
+      "separator": " | "
     }
   ],
   "progress_bar": {
     "width": 10,
     "filled_char": "█",
     "empty_char": "░",
-    "gradient_char": "▓"
+    "gradient_char": "▓",
+    "show_percentage": true
   },
   "colors": {
     "enabled": true,
@@ -22,7 +23,7 @@
     "high": {"threshold": 90, "color": "red"}
   },
   "tokens": {
-    "format": "in:{input} out:{output} total:{total}",
+    "format": "In:{input} | Out:{output} | Total:{total}",
     "unit": "k"
   },
   "components": {

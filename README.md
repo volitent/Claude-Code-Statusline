@@ -14,13 +14,35 @@ A customizable status bar for Claude Code CLI that displays context usage, git s
 
 ## Installation
 
-### Quick Install
+### Interactive Install (Recommended)
 
 ```bash
 git clone https://github.com/yourusername/claude-code-statusline.git
 cd claude-code-statusline
-chmod +x install.sh
 ./install.sh
+```
+
+The installer will prompt you to configure:
+- **Layout**: Single-line or two-line mode
+- **Git info**: Show branch name and change counts
+- **Token stats**: Show input/output/total tokens
+- **Cost**: Show session cost
+- **Duration**: Show session duration
+
+### Quick Install
+
+Use default settings (single-line, with git/tokens/cost):
+
+```bash
+./install.sh --quick
+```
+
+### Reconfigure
+
+Change your configuration without reinstalling:
+
+```bash
+./install.sh --reconfigure
 ```
 
 ### Manual Installation
@@ -32,6 +54,7 @@ chmod +x install.sh
 ```json
 {
   "statusLine": {
+    "type": "command",
     "command": "python3 ~/.claude/statusline.py"
   }
 }
@@ -44,6 +67,15 @@ chmod +x install.sh
 ```bash
 ./install.sh --uninstall
 ```
+
+## Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `./install.sh` | Interactive installation |
+| `./install.sh --quick` | Quick install with defaults |
+| `./install.sh --reconfigure` | Reconfigure options |
+| `./install.sh --uninstall` | Remove statusline |
 
 ## Configuration
 

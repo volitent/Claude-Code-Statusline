@@ -16,22 +16,35 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+DIM='\033[2m'
+NC='\033[0m'
 
-print_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
+# Default options
+LINE_COUNT=1
+declare -a LINE1_COMPONENTS
+declare -a LINE2_COMPONENTS
+TOKEN_IN=true
+TOKEN_OUT=true
+TOKEN_TOTAL=true
+OPT_QUICK=false
 
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
+print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
+clear_screen() { clear; }
 
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+print_header() {
+    clear_screen
+    echo -e "${BOLD}${CYAN}"
+    echo "╔════════════════════════════════════════════════════════╗"
+    echo "║       Claude Code Statusline 安装配置工具              ║"
+    echo "╚════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+    echo ""
 }
 
 check_python() {
@@ -40,86 +53,362 @@ check_python() {
     elif command -v python &> /dev/null; then
         PYTHON_CMD="python"
     else
-        print_error "Python is not installed. Please install Python 3.x to continue."
+        print_error "未找到 Python，请先安装 Python 3.x"
         exit 1
     fi
-
-    # Check Python version
     PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | awk '{print $2}')
-    print_info "Found Python $PYTHON_VERSION"
+    print_info "检测到 Python $PYTHON_VERSION"
+}
+
+# 可用组件定义
+COMPONENTS=(
+    "1:model:模型名称"
+    "2:directory:当前目录"
+    "3:git:Git 信息"
+    "4:progress_bar:进度条"
+    "5:tokens:Token 统计"
+    "6:cost:会话费用"
+    "7:duration:会话时长"
+)
+
+show_components() {
+    echo -e "${BOLD}可用组件：${NC}"
+    echo ""
+    for comp in "${COMPONENTS[@]}"; do
+        IFS=':' read -r num key name <<< "$comp"
+        echo -e "  ${CYAN}$num${NC}) $name"
+    done
+    echo ""
+    echo -e "${DIM}提示：输入多个编号用空格分隔，例如: 1 2 3${NC}"
+}
+
+parse_components() {
+    local input="$1"
+    local -n result_array="$2"
+    result_array=()
+
+    for num in $input; do
+        case "$num" in
+            1) result_array+=("model") ;;
+            2) result_array+=("directory") ;;
+            3) result_array+=("git") ;;
+            4) result_array+=("progress_bar") ;;
+            5) result_array+=("tokens") ;;
+            6) result_array+=("cost") ;;
+            7) result_array+=("duration") ;;
+        esac
+    done
+}
+
+format_components_display() {
+    local -n comps="$1"
+    local result=""
+    for comp in "${comps[@]}"; do
+        case "$comp" in
+            model) result="$result 模型" ;;
+            directory) result="$result 目录" ;;
+            git) result="$result Git" ;;
+            progress_bar) result="$result 进度条" ;;
+            tokens) result="$result Token" ;;
+            cost) result="$result 费用" ;;
+            duration) result="$result 时长" ;;
+        esac
+    done
+    echo "$result"
+}
+
+prompt_line_count() {
+    while true; do
+        print_header
+        echo -e "${BOLD}Step 1/3: 选择状态栏行数${NC}"
+        echo ""
+        echo -e "  ${CYAN}1${NC}) 单行模式 - 所有组件在一行显示"
+        echo -e "  ${CYAN}2${NC}) 双行模式 - 组件分布在两行显示"
+        echo ""
+        read -p "请选择 [1/2，默认 1]: " choice
+
+        case "$choice" in
+            2) LINE_COUNT=2; return ;;
+            ""|1) LINE_COUNT=1; return ;;
+            *) echo -e "${RED}无效选择，请输入 1 或 2${NC}"; sleep 1 ;;
+        esac
+    done
+}
+
+prompt_line_components() {
+    local line_num="$1"
+    local -n target_array="LINE${line_num}_COMPONENTS"
+
+    while true; do
+        print_header
+        echo -e "${BOLD}Step 2/3: 配置第 $line_num 行组件${NC}"
+        echo ""
+        show_components
+        echo -e "${DIM}留空跳过此行${NC}"
+        echo ""
+        read -p "第 $line_num 行组件 [默认: $([ $line_num -eq 1 ] && echo "1 2 3" || echo "4 5 6")]: " input
+
+        if [ -z "$input" ]; then
+            if [ $line_num -eq 1 ]; then
+                target_array=(model directory git)
+            else
+                target_array=(progress_bar tokens cost)
+            fi
+        else
+            parse_components "$input" target_array
+        fi
+
+        if [ ${#target_array[@]} -eq 0 ]; then
+            echo -e "${YELLOW}警告：此行为空，将不显示任何内容${NC}"
+            read -p "确认留空？[y/N]: " confirm
+            [ "$confirm" = "y" ] || continue
+        fi
+
+        return
+    done
+}
+
+prompt_token_options() {
+    # 检查是否有任何行包含 tokens
+    local has_tokens=false
+    for comp in "${LINE1_COMPONENTS[@]}" "${LINE2_COMPONENTS[@]}"; do
+        [ "$comp" = "tokens" ] && has_tokens=true
+    done
+
+    if [ "$has_tokens" = false ]; then
+        return
+    fi
+
+    print_header
+    echo -e "${BOLD}Step 3/3: Token 显示选项${NC}"
+    echo ""
+    echo -e "${DIM}选择要显示的 Token 指标：${NC}"
+    echo ""
+
+    read -p "显示输入量 (In)？[Y/n]: " choice
+    case "$choice" in n|N) TOKEN_IN=false ;; esac
+
+    read -p "显示输出量 (Out)？[Y/n]: " choice
+    case "$choice" in n|N) TOKEN_OUT=false ;; esac
+
+    read -p "显示总量 (Total)？[Y/n]: " choice
+    case "$choice" in n|N) TOKEN_TOTAL=false ;; esac
+}
+
+show_summary() {
+    print_header
+    echo -e "${BOLD}════════ 配置预览 ════════${NC}"
+    echo ""
+
+    echo -e "  ${CYAN}行数:${NC} $LINE_COUNT 行"
+    echo ""
+
+    local line1_display=$(format_components_display LINE1_COMPONENTS)
+    echo -e "  ${CYAN}第一行:${NC}${line1_display:- (空)}"
+
+    if [ $LINE_COUNT -eq 2 ]; then
+        local line2_display=$(format_components_display LINE2_COMPONENTS)
+        echo -e "  ${CYAN}第二行:${NC}${line2_display:- (空)}"
+    fi
+
+    # Check if tokens in any line
+    local has_tokens=false
+    for comp in "${LINE1_COMPONENTS[@]}" "${LINE2_COMPONENTS[@]}"; do
+        [ "$comp" = "tokens" ] && has_tokens=true
+    done
+
+    if [ "$has_tokens" = true ]; then
+        echo ""
+        echo -e "  ${CYAN}Token 显示:${NC} In=$([ "$TOKEN_IN" = true ] && echo "✓" || echo "✗") Out=$([ "$TOKEN_OUT" = true ] && echo "✓" || echo "✗") Total=$([ "$TOKEN_TOTAL" = true ] && echo "✓" || echo "✗")"
+    fi
+
+    echo ""
+    echo -e "${BOLD}══════════════════════════${NC}"
+    echo ""
+}
+
+prompt_options() {
+    # Step 1: 选择行数
+    prompt_line_count
+
+    # Step 2: 配置每行组件
+    prompt_line_components 1
+    if [ $LINE_COUNT -eq 2 ]; then
+        prompt_line_components 2
+    fi
+
+    # Step 3: Token 选项
+    prompt_token_options
+
+    # 显示预览并确认
+    while true; do
+        show_summary
+        echo -e "${DIM}操作: (c)确认安装 (e)重新配置 (q)退出${NC}"
+        echo ""
+        read -p "请选择 [c/e/q]: " choice
+
+        case "$choice" in
+            c|C|"")
+                return
+                ;;
+            e|E)
+                prompt_line_count
+                prompt_line_components 1
+                if [ $LINE_COUNT -eq 2 ]; then
+                    prompt_line_components 2
+                fi
+                prompt_token_options
+                ;;
+            q|Q)
+                echo "已取消安装"
+                exit 0
+                ;;
+        esac
+    done
+}
+
+generate_config() {
+    print_info "生成配置文件..."
+
+    # Convert arrays to space-separated strings
+    LINE1_STR="${LINE1_COMPONENTS[*]}"
+    LINE2_STR="${LINE2_COMPONENTS[*]}"
+
+    PY_TOKEN_IN=$([ "$TOKEN_IN" = true ] && echo "True" || echo "False")
+    PY_TOKEN_OUT=$([ "$TOKEN_OUT" = true ] && echo "True" || echo "False")
+    PY_TOKEN_TOTAL=$([ "$TOKEN_TOTAL" = true ] && echo "True" || echo "False")
+
+    $PYTHON_CMD << PYTHON_EOF
+import json
+import os
+
+config_path = os.path.expanduser("~/.claude/statusline-config.json")
+
+# Parse component lists
+line1_str = """$LINE1_STR"""
+line2_str = """$LINE2_STR"""
+
+line1_components = line1_str.split() if line1_str.strip() else []
+line2_components = line2_str.split() if line2_str.strip() else []
+
+# Build token format
+token_parts = []
+if ${PY_TOKEN_IN}:
+    token_parts.append("In:{input}")
+if ${PY_TOKEN_OUT}:
+    token_parts.append("Out:{output}")
+if ${PY_TOKEN_TOTAL}:
+    token_parts.append("Total:{total}")
+token_format = " | ".join(token_parts) if token_parts else "In:{input} | Out:{output} | Total:{total}"
+
+# Build lines configuration
+lines = []
+if line1_components:
+    lines.append({"components": line1_components, "separator": " | "})
+if line2_components:
+    lines.append({"components": line2_components, "separator": " | "})
+
+if not lines:
+    lines = [{"components": ["model", "progress_bar"], "separator": " | "}]
+
+config = {
+    "lines": lines,
+    "progress_bar": {
+        "width": 10,
+        "filled_char": "█",
+        "empty_char": "░",
+        "gradient_char": "▓",
+        "show_percentage": True
+    },
+    "colors": {
+        "enabled": True,
+        "low": {"threshold": 50, "color": "green"},
+        "medium": {"threshold": 75, "color": "yellow"},
+        "high": {"threshold": 90, "color": "red"}
+    },
+    "tokens": {
+        "format": token_format,
+        "unit": "k"
+    },
+    "components": {
+        "model": {"format": "{name}"},
+        "directory": {"max_length": 20, "show_git_root": True},
+        "git": {"show_branch": True, "show_changes": True},
+        "cost": {"format": "\${cost}"},
+        "duration": {"format": "{duration}"}
+    }
+}
+
+with open(config_path, "w", encoding="utf-8") as f:
+    json.dump(config, f, indent=2, ensure_ascii=False)
+
+print(f"配置文件已保存")
+PYTHON_EOF
 }
 
 install() {
-    print_info "Installing Claude Code Statusline..."
-
-    # Check Python
+    print_info "开始安装 Claude Code Statusline..."
     check_python
 
-    # Create .claude directory if it doesn't exist
+    # 如果没有设置默认值，进行交互式配置
+    if [ ${#LINE1_COMPONENTS[@]} -eq 0 ]; then
+        prompt_options
+    fi
+
+    # Create .claude directory
     if [ ! -d "$CLAUDE_DIR" ]; then
         mkdir -p "$CLAUDE_DIR"
-        print_info "Created $CLAUDE_DIR"
+        print_info "创建目录 $CLAUDE_DIR"
     fi
 
     # Copy statusline script
     if [ -f "$STATUSLINE_SCRIPT" ]; then
-        print_warning "Existing statusline.py found, creating backup..."
+        print_warning "发现已存在的 statusline.py，创建备份..."
         cp "$STATUSLINE_SCRIPT" "$STATUSLINE_SCRIPT.backup"
     fi
 
     cp "$SCRIPT_DIR/statusline.py" "$STATUSLINE_SCRIPT"
     chmod +x "$STATUSLINE_SCRIPT"
-    print_success "Installed statusline.py to $CLAUDE_DIR"
+    print_success "已安装 statusline.py"
 
-    # Create default config if it doesn't exist
-    if [ ! -f "$CONFIG_FILE" ]; then
-        if [ -f "$SCRIPT_DIR/config.json" ]; then
-            cp "$SCRIPT_DIR/config.json" "$CONFIG_FILE"
-            print_success "Created default configuration at $CONFIG_FILE"
-        else
-            print_warning "config.json not found in script directory, skipping config installation"
-        fi
-    else
-        print_info "Configuration file already exists at $CONFIG_FILE (preserving)"
-    fi
+    # Generate config
+    generate_config
+    print_success "配置文件已生成"
 
     # Update settings.json
     update_settings
 
-    print_success "Installation complete!"
     echo ""
-    echo "To test your statusline, run:"
+    print_success "安装完成！"
+    echo ""
+    echo -e "${DIM}测试命令:${NC}"
     echo "  echo '{\"model\":{\"display_name\":\"Opus\"},\"context_window\":{\"used_percentage\":45}}' | $PYTHON_CMD $STATUSLINE_SCRIPT"
     echo ""
-    echo "Configuration file: $CONFIG_FILE"
-    echo "Restart Claude Code to see your new statusline!"
+    echo -e "${DIM}配置文件:${NC} $CONFIG_FILE"
+    echo -e "${DIM}重启 Claude Code 即可看到新的状态栏！${NC}"
 }
 
 update_settings() {
-    print_info "Updating Claude Code settings..."
+    print_info "更新 Claude Code 设置..."
 
-    # Create settings.json if it doesn't exist
     if [ ! -f "$SETTINGS_FILE" ]; then
         echo '{}' > "$SETTINGS_FILE"
-        print_info "Created $SETTINGS_FILE"
     fi
 
-    # Check if statusLine already exists
     if grep -q '"statusLine"' "$SETTINGS_FILE" 2>/dev/null; then
-        print_warning "statusLine configuration already exists in settings.json"
-        read -p "Do you want to overwrite it? (y/N) " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_info "Skipping settings.json update"
-            return
+        print_warning "settings.json 中已存在 statusLine 配置"
+        if [ "$OPT_QUICK" = false ]; then
+            read -p "是否覆盖？(y/N) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                print_info "跳过 settings.json 更新"
+                return
+            fi
         fi
     fi
 
-    # Create a backup
     cp "$SETTINGS_FILE" "$SETTINGS_FILE.backup"
 
-    # Update settings.json with statusLine configuration
-    # Using Python for reliable JSON manipulation
     $PYTHON_CMD << 'EOF'
 import json
 import os
@@ -132,46 +421,39 @@ try:
 except (json.JSONDecodeError, FileNotFoundError):
     settings = {}
 
-# Add statusLine configuration
 settings["statusLine"] = {
+    "type": "command",
     "command": f"python3 {os.path.expanduser('~/.claude/statusline.py')}"
 }
 
-# Write back
 with open(settings_path, "w") as f:
     json.dump(settings, f, indent=2)
 
-print("Updated settings.json with statusLine configuration")
+print("已更新 settings.json")
 EOF
 
-    print_success "Updated $SETTINGS_FILE"
+    print_success "已更新 $SETTINGS_FILE"
 }
 
 uninstall() {
-    print_info "Uninstalling Claude Code Statusline..."
+    print_info "卸载 Claude Code Statusline..."
 
-    # Remove statusline script
     if [ -f "$STATUSLINE_SCRIPT" ]; then
         rm "$STATUSLINE_SCRIPT"
-        print_success "Removed statusline.py"
-    else
-        print_info "statusline.py not found, skipping"
+        print_success "已删除 statusline.py"
     fi
 
-    # Ask about config file
     if [ -f "$CONFIG_FILE" ]; then
-        read -p "Do you want to keep your configuration file? (Y/n) " -n 1 -r
+        read -p "是否保留配置文件？(Y/n) " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-            # Create backup
             cp "$CONFIG_FILE" "$CONFIG_FILE.backup"
-            print_info "Configuration backed up to $CONFIG_FILE.backup"
+            print_info "配置已备份"
         fi
         rm "$CONFIG_FILE"
-        print_success "Removed configuration file"
+        print_success "已删除配置文件"
     fi
 
-    # Update settings.json to remove statusLine
     if [ -f "$SETTINGS_FILE" ]; then
         $PYTHON_CMD << 'EOF'
 import json
@@ -185,60 +467,83 @@ try:
 
     if "statusLine" in settings:
         del settings["statusLine"]
-
         with open(settings_path, "w") as f:
             json.dump(settings, f, indent=2)
-
-        print("Removed statusLine from settings.json")
-    else:
-        print("No statusLine configuration found in settings.json")
-except (json.JSONDecodeError, FileNotFoundError) as e:
-    print(f"Warning: Could not update settings.json: {e}")
+        print("已移除 statusLine 配置")
+except:
+    pass
 EOF
-        print_success "Cleaned up settings.json"
+        print_success "已清理 settings.json"
     fi
 
-    # Remove backup files
-    for backup in "$STATUSLINE_SCRIPT.backup" "$SETTINGS_FILE.backup"; do
-        if [ -f "$backup" ]; then
-            rm "$backup"
-            print_info "Removed backup: $backup"
-        fi
-    done
+    echo ""
+    print_success "卸载完成！"
+}
 
-    print_success "Uninstallation complete!"
+reconfigure() {
+    print_info "重新配置状态栏..."
+    check_python
+    prompt_options
+    generate_config
+    print_success "配置已更新！重启 Claude Code 以应用"
 }
 
 show_help() {
-    echo "Claude Code Statusline Installer"
+    echo "Claude Code Statusline 安装器"
     echo ""
-    echo "Usage: $0 [OPTIONS]"
+    echo -e "${BOLD}用法:${NC} $0 [选项]"
     echo ""
-    echo "Options:"
-    echo "  --install, -i     Install the statusline (default)"
-    echo "  --uninstall, -u   Uninstall the statusline"
-    echo "  --help, -h        Show this help message"
+    echo -e "${BOLD}选项:${NC}"
+    echo "  无参数          交互式安装（推荐）"
+    echo "  --quick, -q     快速安装（使用默认配置）"
+    echo "  --reconfigure   重新配置"
+    echo "  --uninstall     卸载"
+    echo "  --help, -h      显示帮助"
     echo ""
-    echo "Examples:"
-    echo "  $0                # Install statusline"
-    echo "  $0 --install      # Install statusline"
-    echo "  $0 --uninstall    # Uninstall statusline"
+    echo -e "${BOLD}示例:${NC}"
+    echo "  $0              # 交互式安装"
+    echo "  $0 --quick      # 快速安装"
+    echo "  $0 --reconfigure # 重新配置"
 }
 
-# Main entry point
+# Quick install defaults
+set_defaults() {
+    LINE_COUNT=2
+    LINE1_COMPONENTS=(model directory git)
+    LINE2_COMPONENTS=(progress_bar tokens cost)
+    TOKEN_IN=true
+    TOKEN_OUT=true
+    TOKEN_TOTAL=true
+    OPT_QUICK=true
+}
+
+# Parse arguments
 case "${1:-}" in
     --uninstall|-u)
+        check_python
         uninstall
+        exit 0
+        ;;
+    --reconfigure|-r)
+        reconfigure
+        exit 0
+        ;;
+    --quick|-q)
+        set_defaults
+        check_python
         ;;
     --help|-h)
         show_help
+        exit 0
         ;;
     --install|-i|"")
-        install
         ;;
     *)
-        print_error "Unknown option: $1"
+        print_error "未知选项: $1"
         show_help
         exit 1
         ;;
 esac
+
+# Run install
+install

@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(chmod:*)",
-      "Bash(python3 /Users/liukairui/my_git_projects/cc_statusline/Claude-Code-Statusline/statusline.py)"
+      "Bash(python3 /Users/liukairui/my_git_projects/cc_statusline/Claude-Code-Statusline/statusline.py)",
+      "Bash(./install.sh --quick 2>&1)"
     ]
   }
 }
