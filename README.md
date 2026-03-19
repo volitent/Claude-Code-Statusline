@@ -2,6 +2,9 @@
 
 A customizable status bar for Claude Code CLI that displays context usage, git status, model information, and more.
 
+![Installation Screenshot](images/install.png)
+
+
 ## Features
 
 - 🎨 **Fully customizable** - Configure what information to display and how
@@ -110,13 +113,19 @@ The configuration file is located at `~/.claude/statusline-config.json`.
 
 | Component | Description | Example Output |
 |-----------|-------------|----------------|
-| `progress_bar` | Visual context usage bar | `████████░░` |
+| `progress_bar` | Visual context usage bar | `████████░░ 45%` |
 | `model` | Current Claude model | `Opus 4.6` |
 | `directory` | Current working directory | `~/projects/myapp` |
 | `git` | Git branch and changes | `main [+2 ~3]` |
 | `tokens` | Token statistics | `in:12.5k out:3.2k total:15.7k` |
-| `cost` | Session cost | `$0.0234` |
+| `cost` | Session cost | `$0.5234` |
 | `duration` | Session duration | `5m30s` |
+| `version` | Claude Code version | `v1.0.5` |
+| `tokens_cached` | Cached token count | `cached:8.0k` |
+| `lines_changed` | Lines added/removed | `+42 -15` |
+| `custom_text` | User-defined custom text | `my text` |
+| `weekly_usage` | Weekly API usage percentage | `weekly: 12%` |
+| `block_timer` | 5-hour block elapsed time | `block: 3h45m` |
 
 ### Progress Bar Configuration
 

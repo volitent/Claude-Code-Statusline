@@ -1,11 +1,19 @@
 {
   "lines": [
     {
-      "components": ["model", "directory", "git"],
+      "components": ["model", "version", "directory", "git"],
       "separator": " | "
     },
     {
-      "components": ["progress_bar", "tokens", "cost", "duration"],
+      "components": ["progress_bar", "tokens", "tokens_cached"],
+      "separator": " | "
+    },
+    {
+      "components": ["cost", "duration", "lines_changed"],
+      "separator": " | "
+    },
+    {
+      "components": ["weekly_usage", "block_timer"],
       "separator": " | "
     }
   ],
@@ -13,7 +21,6 @@
     "width": 12,
     "filled_char": "█",
     "empty_char": "░",
-    "gradient_char": "▓",
     "show_percentage": true
   },
   "colors": {
@@ -28,9 +35,15 @@
   },
   "components": {
     "model": {"format": "🤖 {name}"},
+    "version": {"format": "v{version}"},
     "directory": {"max_length": 30, "show_git_root": true},
     "git": {"show_branch": true, "show_changes": true},
     "cost": {"format": "💰 ${cost}"},
-    "duration": {"format": "⏱ {duration}"}
+    "duration": {"format": "⏱ {duration}"},
+    "tokens_cached": {"format": "📦 {cached}", "unit": "auto"},
+    "lines_changed": {"format": "+{added} -{removed}"},
+    "custom_text": {"text": "", "color": "cyan"},
+    "weekly_usage": {"format": "📅 {percent:.1f}%", "show_progress": false},
+    "block_timer": {"format": "⏰ {elapsed}", "show_progress": false, "show_remaining": false}
   }
 }

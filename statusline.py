@@ -8,11 +8,18 @@ import json
 import os
 import subprocess
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 # Configuration file path
 CONFIG_PATH = Path.home() / ".claude" / "statusline-config.json"
+
+# Usage data cache
+USAGE_CACHE_DIR = Path.home() / ".cache" / "ccstatusline"
+USAGE_CACHE_FILE = USAGE_CACHE_DIR / "usage.json"
+USAGE_CACHE_MAX_AGE = 180  # seconds
 
 # Default configuration
 DEFAULT_CONFIG = {
@@ -49,7 +56,13 @@ DEFAULT_CONFIG = {
         "cost": {"format": "${cost}"},
         "duration": {"format": "{duration}"},
         "progress_bar": {},
-        "tokens": {}
+        "tokens": {},
+        "version": {"format": "v{version}"},
+        "tokens_cached": {"format": "cached:{cached}"},
+        "lines_changed": {"format": "+{added} -{removed}"},
+        "custom_text": {"text": ""},
+        "weekly_usage": {"format": "Weekly: {percent:.1f}%"},
+        "block_timer": {"format": "Block: {elapsed}", "show_progress": False}
     }
 }
 
@@ -64,7 +77,9 @@ COLORS = {
     "cyan": "\033[36m",
     "magenta": "\033[35m",
     "dim": "\033[2m",
-    "bold": "\033[1m"
+    "bold": "\033[1m",
+    "bright_blue": "\033[94m",
+    "gray": "\033[90m"
 }
 
 
@@ -133,7 +148,6 @@ def render_progress_bar(percentage: float, config: dict) -> str:
     width = pb_config.get("width", 10)
     filled_char = pb_config.get("filled_char", "█")
     empty_char = pb_config.get("empty_char", "░")
-    gradient_char = pb_config.get("gradient_char", "▓")
     show_percentage = pb_config.get("show_percentage", True)
 
     # Handle null/None values
@@ -142,13 +156,8 @@ def render_progress_bar(percentage: float, config: dict) -> str:
     filled = int(percentage / 100 * width)
     remaining = width - filled
 
-    # Add gradient character at the boundary if there's remaining space
-    if remaining > 0 and filled > 0:
-        bar = filled_char * (filled - 1) + gradient_char + empty_char * (remaining - 1)
-    elif remaining > 0:
-        bar = empty_char * remaining
-    else:
-        bar = filled_char * width
+    # Simple progress bar without gradient
+    bar = filled_char * filled + empty_char * remaining
 
     color = get_color_for_percentage(percentage, config)
     reset = COLORS["reset"] if color else ""
@@ -334,6 +343,236 @@ def get_context_percentage(data: dict) -> float:
     return 0
 
 
+# ============================================================
+# NEW COMPONENTS
+# ============================================================
+
+def render_version(data: dict, config: dict) -> str:
+    """Render Claude Code version component."""
+    version_config = config.get("components", {}).get("version", {})
+    fmt = version_config.get("format", "v{version}")
+
+    version = data.get("version", "")
+    if version:
+        return fmt.format(version=version)
+    return ""
+
+
+def render_tokens_cached(data: dict, config: dict) -> str:
+    """Render cached tokens component."""
+    cached_config = config.get("components", {}).get("tokens_cached", {})
+    fmt = cached_config.get("format", "cached:{cached}")
+    unit = cached_config.get("unit", "k")
+
+    context = data.get("context_window", {})
+
+    # Get cached tokens from current_usage
+    current_usage = context.get("current_usage", {})
+    cache_creation = 0
+    cache_read = 0
+
+    if isinstance(current_usage, dict):
+        cache_creation = current_usage.get("cache_creation_input_tokens", 0) or 0
+        cache_read = current_usage.get("cache_read_input_tokens", 0) or 0
+
+    total_cached = cache_creation + cache_read
+
+    if total_cached > 0:
+        return fmt.format(cached=format_tokens(total_cached, unit))
+    return ""
+
+
+def render_lines_changed(data: dict, config: dict) -> str:
+    """Render lines changed component (added/removed)."""
+    lines_config = config.get("components", {}).get("lines_changed", {})
+    fmt = lines_config.get("format", "+{added} -{removed}")
+
+    cost_data = data.get("cost", {})
+    lines_added = cost_data.get("total_lines_added", 0) or 0
+    lines_removed = cost_data.get("total_lines_removed", 0) or 0
+
+    if lines_added > 0 or lines_removed > 0:
+        color = COLORS.get("cyan", "")
+        reset = COLORS["reset"] if color else ""
+        result = fmt.format(added=lines_added, removed=lines_removed)
+        return f"{color}{result}{reset}"
+    return ""
+
+
+def render_custom_text(data: dict, config: dict) -> str:
+    """Render custom text component."""
+    custom_config = config.get("components", {}).get("custom_text", {})
+    text = custom_config.get("text", "")
+    color = custom_config.get("color", "")
+
+    if text:
+        if color and color in COLORS:
+            return f"{COLORS[color]}{text}{COLORS['reset']}"
+        return text
+    return ""
+
+
+def _fetch_usage_data() -> Optional[dict]:
+    """
+    Fetch usage data from Anthropic API.
+    Returns dict with session_usage, weekly_usage, session_reset_at, weekly_reset_at.
+    """
+    try:
+        # Try to get cached data first
+        if USAGE_CACHE_FILE.exists():
+            cache_age = time.time() - USAGE_CACHE_FILE.stat().st_mtime
+            if cache_age < USAGE_CACHE_MAX_AGE:
+                with open(USAGE_CACHE_FILE, "r") as f:
+                    return json.load(f)
+
+        # Try to read credentials
+        token = _get_usage_token()
+        if not token:
+            return None
+
+        # Make API request
+        import urllib.request
+        import urllib.error
+
+        req = urllib.request.Request(
+            "https://api.anthropic.com/api/oauth/usage",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "anthropic-beta": "oauth-2025-04-20"
+            }
+        )
+
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode())
+
+            result = {
+                "session_usage": data.get("five_hour", {}).get("utilization"),
+                "session_reset_at": data.get("five_hour", {}).get("resets_at"),
+                "weekly_usage": data.get("seven_day", {}).get("utilization"),
+                "weekly_reset_at": data.get("seven_day", {}).get("resets_at")
+            }
+
+            # Cache the result
+            USAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            with open(USAGE_CACHE_FILE, "w") as f:
+                json.dump(result, f)
+
+            return result
+
+    except Exception:
+        return None
+
+
+def _get_usage_token() -> Optional[str]:
+    """Get usage API token from credentials file or keychain."""
+    try:
+        # Try credentials file first
+        cred_file = Path.home() / ".claude" / ".credentials.json"
+        if cred_file.exists():
+            with open(cred_file, "r") as f:
+                data = json.load(f)
+                return data.get("claudeAiOauth", {}).get("accessToken")
+
+        # On macOS, try keychain
+        if sys.platform == "darwin":
+            result = subprocess.run(
+                ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                secret = result.stdout.strip()
+                data = json.loads(secret)
+                return data.get("claudeAiOauth", {}).get("accessToken")
+    except Exception:
+        pass
+
+    return None
+
+
+def render_weekly_usage(data: dict, config: dict) -> str:
+    """Render weekly usage percentage component."""
+    usage_config = config.get("components", {}).get("weekly_usage", {})
+    fmt = usage_config.get("format", "Weekly: {percent:.1f}%")
+    show_progress = usage_config.get("show_progress", False)
+
+    usage_data = _fetch_usage_data()
+
+    if usage_data and usage_data.get("weekly_usage") is not None:
+        percent = usage_data["weekly_usage"]
+        color = get_color_for_percentage(percent, config)
+        reset = COLORS["reset"] if color else ""
+
+        if show_progress:
+            bar = _make_progress_bar(percent, 8)
+            return f"{color}{fmt.format(percent=percent)} {bar}{reset}"
+
+        return f"{color}{fmt.format(percent=percent)}{reset}"
+
+    return ""
+
+
+def render_block_timer(data: dict, config: dict) -> str:
+    """Render 5-hour block timer component."""
+    timer_config = config.get("components", {}).get("block_timer", {})
+    fmt = timer_config.get("format", "Block: {elapsed}")
+    show_progress = timer_config.get("show_progress", False)
+    show_remaining = timer_config.get("show_remaining", False)
+
+    usage_data = _fetch_usage_data()
+
+    if usage_data and usage_data.get("session_reset_at"):
+        try:
+            reset_at = usage_data["session_reset_at"]
+            # Parse ISO format timestamp
+            reset_time = datetime.fromisoformat(reset_at.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+
+            # Calculate elapsed time (5 hour block = 18000 seconds)
+            total_block_ms = 5 * 60 * 60 * 1000  # 5 hours in ms
+            remaining_ms = int((reset_time - now).total_seconds() * 1000)
+            elapsed_ms = total_block_ms - remaining_ms
+
+            if elapsed_ms < 0:
+                elapsed_ms = 0
+            if remaining_ms < 0:
+                remaining_ms = 0
+
+            # Format elapsed time
+            elapsed_hours = int(elapsed_ms // (1000 * 60 * 60))
+            elapsed_minutes = int((elapsed_ms % (1000 * 60 * 60)) // (1000 * 60))
+
+            if show_remaining:
+                remaining_hours = int(remaining_ms // (1000 * 60 * 60))
+                remaining_minutes = int((remaining_ms % (1000 * 60 * 60)) // (1000 * 60))
+                elapsed_str = f"{remaining_hours}h{remaining_minutes}m remaining"
+            else:
+                elapsed_str = f"{elapsed_hours}h{elapsed_minutes}m"
+
+            # Calculate percentage
+            percent = (elapsed_ms / total_block_ms) * 100 if total_block_ms > 0 else 0
+            color = get_color_for_percentage(percent, config)
+            reset = COLORS["reset"] if color else ""
+
+            if show_progress:
+                bar = _make_progress_bar(percent, 8)
+                return f"{color}{fmt.format(elapsed=elapsed_str)} {bar}{reset}"
+
+            return f"{color}{fmt.format(elapsed=elapsed_str)}{reset}"
+
+        except Exception:
+            pass
+
+    return ""
+
+
+def _make_progress_bar(percent: float, width: int = 10) -> str:
+    """Make a simple progress bar."""
+    filled = int(percent / 100 * width)
+    remaining = width - filled
+    return "█" * filled + "░" * remaining
+
+
 def render_component(name: str, data: dict, config: dict) -> str:
     """Dispatch to the appropriate component renderer."""
     renderers = {
@@ -347,6 +586,13 @@ def render_component(name: str, data: dict, config: dict) -> str:
         "tokens": lambda: render_tokens(data, config),
         "cost": lambda: render_cost(data, config),
         "duration": lambda: render_duration(data, config),
+        # New components
+        "version": lambda: render_version(data, config),
+        "tokens_cached": lambda: render_tokens_cached(data, config),
+        "lines_changed": lambda: render_lines_changed(data, config),
+        "custom_text": lambda: render_custom_text(data, config),
+        "weekly_usage": lambda: render_weekly_usage(data, config),
+        "block_timer": lambda: render_block_timer(data, config),
     }
 
     renderer = renderers.get(name)
