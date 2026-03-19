@@ -1,9 +1,30 @@
+<div align="center">
+
+<pre>
+  ____ ____     ____  _        _             _ _            
+ / ___/ ___|   / ___|| |_ __ _| |_ _   _ ___| (_)_ __   ___ 
+| |  | |   ____\___ \| __/ _` | __| | | / __| | | '_ \ / _ \
+| |__| |__|_____|__) | || (_| | |_| |_| \__ \ | | | | |  __/
+ \____\____|   |____/ \__\__,_|\__|\__,_|___/_|_|_| |_|\___|
+</pre>
+
 # Claude Code Statusline
 
-A customizable status bar for Claude Code CLI that displays context usage, git status, model information, and more.
+**🎨 A highly customizable status line for Claude Code CLI**
+
+*Display model info, git branch, token usage, cost tracking and more*
+
+[![Python 3](https://img.shields.io/badge/Python-3.x-blue.svg)](https://www.python.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/yourusername/claude-code-statusline)
 
 ![Installation Screenshot](images/install.png)
 
+</div>
+
+## Preview
+
+![Preview](images/preview_1.png)
 
 ## Features
 
@@ -26,15 +47,15 @@ cd claude-code-statusline
 ```
 
 The installer will prompt you to configure:
-- **Layout**: Single-line or two-line mode
-- **Git info**: Show branch name and change counts
+- **Layout**: Single-line, two-line, or three-line mode
+- **Components**: Choose what information to display on each line
 - **Token stats**: Show input/output/total tokens
 - **Cost**: Show session cost
 - **Duration**: Show session duration
 
 ### Quick Install
 
-Use default settings (single-line, with git/tokens/cost):
+Use default settings (two-line mode, with model/directory/git/progress/tokens/cost):
 
 ```bash
 ./install.sh --quick
@@ -98,7 +119,7 @@ The configuration file is located at `~/.claude/statusline-config.json`.
     "width": 10,
     "filled_char": "█",
     "empty_char": "░",
-    "gradient_char": "▓"
+    "show_percentage": true
   },
   "colors": {
     "enabled": true,
@@ -135,7 +156,7 @@ The configuration file is located at `~/.claude/statusline-config.json`.
     "width": 10,
     "filled_char": "█",
     "empty_char": "░",
-    "gradient_char": "▓"
+    "show_percentage": true
   }
 }
 ```
@@ -143,7 +164,7 @@ The configuration file is located at `~/.claude/statusline-config.json`.
 - `width`: Number of characters in the progress bar
 - `filled_char`: Character for filled portion
 - `empty_char`: Character for empty portion
-- `gradient_char`: Character at the boundary (gradient effect)
+- `show_percentage`: Whether to show percentage after the bar
 
 ### Color Configuration
 
