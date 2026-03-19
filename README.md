@@ -16,7 +16,7 @@
 
 [![Python 3](https://img.shields.io/badge/Python-3.x-blue.svg)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/yourusername/claude-code-statusline)
+[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/volitent/Claude-Code-Statusline)
 
 ![Installation Screenshot](images/install.png)
 
@@ -41,8 +41,8 @@
 ### Interactive Install (Recommended)
 
 ```bash
-git clone https://github.com/yourusername/claude-code-statusline.git
-cd claude-code-statusline
+git clone https://github.com/volitent/Claude-Code-Statusline.git
+cd Claude-Code-Statusline
 ./install.sh
 ```
 
